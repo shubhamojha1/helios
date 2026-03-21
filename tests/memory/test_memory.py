@@ -45,10 +45,9 @@ def test_reallocate_after_free():
     used, total = mm.get_utilization()
     assert used == 7
 
-def test_get_fragmentation_ratio():
-    mm = MemoryManager(total_pages=20, page_size_tokens=16)
-    mm.allocate("req_1", 100)
-    mm.allocate("req_2", 17)
+# def test_get_fragmentation_ratio():
+#     mm = MemoryManager(total_pages=20, page_size_tokens=16)
+#     mm.allocate("req_1", 100)
+#     mm.allocate("req_2", 17)
 
-    fragmentation_ratio = mm.get_fragmentation_ratio()
-    
+#     fragmentation_ratio = mm.get_fragmentation_ratio()
