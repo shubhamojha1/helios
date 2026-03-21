@@ -45,3 +45,12 @@ class Request:
     first_token_time: Optional[float] = None
     completion_time: Optional[float] = None
 
+@dataclass
+class SchedulerOutput:
+    prefill_requests: list
+    decode_requests: list
+    preempted_requests: list
+    step_id: int
+    scheduled_at: float
+    available_pages: int
+    total_pages: int
