@@ -83,8 +83,33 @@ class MemoryManager:
             page.owner_request_id = None
             page.token_offset = 0
             self.free_page_ids.add(page_id)
-            
+
         del self.request_pages[request_id]
+
+    def get_fragmentation_ratio(self) -> float:
+        """
+        Fragmentation = wated slots in the last page of each request.
+        A request using 17 tokens with page_size=16
+        Uses 1 page for first 16 tokens, and 1 page for last token
+        Wastage of 15 slots in the 2nd page
+        """
+        if not self.request_pages:
+            return 0.0
+        
+        total_allocated_slots = 0
+        total_wasted_slots = 0
+
+        for request_id, page_ids in self.request_pages.items():
+            allocated_slots = len(page_ids) * self.page_size_tokens
+            total_allocated_slots += allocated_slots
+            # We don't track exact token count per request
+            # So fragmentation is approximated as 0 for now.
+            # Will be updated when scheduler tracks token counts.
+
+        if total_allocated_slots == 0:
+            return 0.0
+        
+        return total_wasted_slots / total_allocated_slots
 
 
 if __name__ == "__main__":
