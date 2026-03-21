@@ -82,8 +82,8 @@ class MemoryManager:
             page.is_free = True
             page.owner_request_id = None
             page.token_offset = 0
-            self.free_page_ids(page_id)
-
+            self.free_page_ids.add(page_id)
+            
         del self.request_pages[request_id]
 
 
