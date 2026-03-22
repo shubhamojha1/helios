@@ -2,8 +2,11 @@ import asyncio
 import time
 from typing import Dict, List, Optional
 from core.types import Request, RequestStatus, SchedulerOutput
+from core.logger import get_logger
 from memory.manager import MemoryManager
 from engine.engine import Engine
+
+logger = get_logger(__name__)
 from scheduler.fcfs import FCFSStrategy
 
 
@@ -45,6 +48,7 @@ class Scheduler:
             request.status = RequestStatus.WAITING
             self.waiting.append(request)
             self.all_requests[request.request_id] = request
+            logger.info(f"Accepted request {request.request_id} ({len(request.prompt_tokens)} prompt tokens)")
 
     async def cancel(self, request_id: str) -> bool:
         async with self._lock:
@@ -63,6 +67,7 @@ class Scheduler:
 
             # Signal the API layer that this stream is done
             await req.output_queue.put(STREAM_DONE)
+            logger.info(f"Cancelled request {request_id}")
             return True
 
     async def run(self) -> None:
@@ -71,7 +76,7 @@ class Scheduler:
         Each iteration: schedule -> prefill -> decode -> emit tokens.
         """
         self._running = True
-        print("Scheduler running.")
+        logger.info("Scheduler running.")
 
         while self._running:
             async with self._lock:
@@ -152,6 +157,9 @@ class Scheduler:
         req.completion_time = time.monotonic()
         self.memory_manager.free(req.request_id)
         self.active = [r for r in self.active if r.request_id != req.request_id]
+
+        duration = req.completion_time - req.arrival_time
+        logger.info(f"Request {req.request_id} complete! {len(req.generated_tokens)} tokens generated in {duration:.2f}s")
 
         # Signal stream completion
         await req.output_queue.put(STREAM_DONE)

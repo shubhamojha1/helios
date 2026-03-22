@@ -2,7 +2,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from llama_cpp import Llama
 from core.types import Request, RequestStatus
+from core.logger import get_logger
 import time
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -22,14 +25,14 @@ class Engine:
         self.llm : Optional[Llama] = None
 
     def load_model(self) -> None:
-        print(f"Loading model from {self.config.model_path}...")
+        logger.info(f"Loading model from {self.config.model_path}...")
         self.llm = Llama(
             model_path=self.config.model_path,
             n_ctx=self.config.n_ctx,
             n_gpu_layers=self.config.n_gpu_layers,
             verbose=self.config.verbose,
         )
-        print("Model loaded!")
+        logger.info("-----\nModel loaded!\n-----")
 
     def tokenize(self, text: str) -> List[int]:
         assert self.llm is not None, "Model not loaded"
@@ -51,6 +54,7 @@ class Engine:
 
         request.prefill_start_time = time.monotonic()
         request.status = RequestStatus.PREFILL
+        logger.debug(f"Starting prefill for request {request.request_id} ({len(request.prompt_tokens)} tokens)")
 
         # Feed the full prompt into the model
         self.llm.reset() # Clear any previous KV cache state
@@ -63,6 +67,7 @@ class Engine:
             repeat_penalty=self.config.repeat_penalty,
         )
 
+        logger.debug(f"Prefill for {request.request_id} complete. First token: {first_token}")
         request.first_token_time = time.monotonic()
         request.status = RequestStatus.DECODING
         return first_token
@@ -82,6 +87,9 @@ class Engine:
         assert self.llm is not None, "Model not loaded"
 
         results: Dict[str, int] = {}
+        
+        if requests:
+            logger.debug(f"Running decode step for {len(requests)} requests")
 
         for request in requests:
             if not request.generated_tokens:

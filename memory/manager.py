@@ -1,6 +1,9 @@
 from core.types import Page
+from core.logger import get_logger
 from typing import List, Dict, Tuple
 import math
+
+logger = get_logger(__name__)
 
 """
 What it needs to do:
@@ -46,6 +49,7 @@ class MemoryManager:
         needed = self._pages_needed(num_tokens)
 
         if len(self.free_page_ids) < needed:
+            logger.warning(f"Allocation failed for request {request_id}: needed {needed}, free {len(self.free_page_ids)}")
             raise AllocationError(
                 f"Cannot allocate {needed} pages for request {request_id}, "
                 f"only {len(self.free_page_ids)} free"
@@ -65,6 +69,7 @@ class MemoryManager:
             allocated.append(page_id)
 
         self.request_pages[request_id] = allocated
+        logger.debug(f"Allocated {needed} pages for request {request_id}")
         return allocated
     
     def get_utilization(self) -> Tuple[int, int]:
@@ -85,6 +90,7 @@ class MemoryManager:
             self.free_page_ids.add(page_id)
 
         del self.request_pages[request_id]
+        logger.debug(f"Freed all pages for request {request_id}")
 
     def get_fragmentation_ratio(self) -> float:
         """
