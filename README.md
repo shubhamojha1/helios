@@ -13,7 +13,7 @@ Local LLM inference serving engine with OpenAI-compatible API routes.
 Clone the repo and enter the project directory:
 
 ```powershell
-git clone <your-repo-url>
+git clone https://github.com/shubhamojha1/helios
 cd helios
 ```
 

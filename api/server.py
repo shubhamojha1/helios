@@ -181,8 +181,6 @@ async def completions(body: CompletionRequest):
     loaded_model = _loaded_model(scheduler)
     _validate_model(body.model, loaded_model)
 
-    log.info("MODEL========> ", loaded_model)
-
     if body.stream:
         raise HTTPException(
             status_code=400,
