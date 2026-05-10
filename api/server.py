@@ -2,6 +2,7 @@ import asyncio
 import time
 import uuid
 from typing import AsyncGenerator
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -157,6 +158,22 @@ async def metrics():
         )
     )
 
+@app.get("/v1/models")
+async def list_models():
+    models_dir = Path(__file__).resolve().parent.parent / "models"
+    if not models_dir.exists():
+        return {"object": "list", "data": []}
+    
+    models = [
+        p.name
+        for p in models_dir.iterdir()
+        if p.is_file() 
+        # and p.suffix == ".gguf"
+    ]
+    return {
+        "object": "list",
+        "data": [{"id": m, "object": "model"} for m in models],
+    }
 
 @app.get("/health")
 async def health():
