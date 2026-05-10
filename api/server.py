@@ -11,7 +11,7 @@ from core.logger import get_logger
 
 logger = get_logger(__name__)
 
-from api.models import ChatCompletionRequest, MetricsResponse
+from api.models import ChatCompletionRequest, CompletionRequest, MetricsResponse
 from core.types import Request, Priority, RequestStatus
 from scheduler.scheduler import Scheduler, STREAM_DONE
 
@@ -46,6 +46,27 @@ def _priority_from_str(priority: str) -> Priority:
     }[priority]
 
 
+def _loaded_model(scheduler: Scheduler) -> str:
+    return Path(scheduler.engine.config.model_path).name
+
+
+def _validate_model(model: str, loaded_model: str) -> None:
+    if model == loaded_model:
+        return
+
+    raise HTTPException(
+        status_code=404,
+        detail={
+            "error": {
+                "message": f"Model '{model}' not found. Loaded model is '{loaded_model}'.",
+                "type": "invalid_request_error",
+                "param": "model",
+                "code": "model_not_found",
+            }
+        },
+    )
+
+
 async def _stream_tokens(
     request: Request,
     scheduler: Scheduler,
@@ -54,16 +75,22 @@ async def _stream_tokens(
     Async generator that yields SSE-formatted chunks as tokens arrive
     on the request's output_queue.
     """
+    model = Path(scheduler.engine.config.model_path).name
     while True:
         token = await request.output_queue.get()
 
         if token is STREAM_DONE:
             # Send final chunk with finish_reason
             final = {
-                "id": request.request_id,
+                "id": f"chatcmpl-{request.request_id}",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
                 "choices": [{
-                    "delta": {"content": ""},
-                    "finish_reason": "stop"
+                    "index": 0,
+                    "delta": {},
+                    "logprobs": None,
+                    "finish_reason": "stop",
                 }]
             }
             yield f"data: {json.dumps(final)}\n\n"
@@ -71,10 +98,15 @@ async def _stream_tokens(
             break
 
         chunk = {
-            "id": request.request_id,
+            "id": f"chatcmpl-{request.request_id}",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
             "choices": [{
+                "index": 0,
                 "delta": {"content": token},
-                "finish_reason": None
+                "logprobs": None,
+                "finish_reason": None,
             }]
         }
         yield f"data: {json.dumps(chunk)}\n\n"
@@ -84,17 +116,12 @@ async def _stream_tokens(
 async def chat_completions(body: ChatCompletionRequest):
     scheduler: Scheduler = app.state.scheduler
 
-    loaded_model = Path(scheduler.engine.config.model_path).name
-    if body.model not in ("helios", loaded_model):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Model '{body.model} is not loaded. Current model: {loaded_model}'"
-        )
-    logger.info(                                                                                                                                                
-          f"Incoming chat completion request: model={body.model}, "                                                                                               
-          f"max_tokens={body.max_tokens}, priority={body.priority}"                                                                                               
-      ) 
-    # logger.info(f"Incoming chat completion request: max_tokens={body.max_tokens}, priority={body.priority}")
+    loaded_model = _loaded_model(scheduler)
+    _validate_model(body.model, loaded_model)
+    logger.info(
+        f"Incoming chat completion request: model={body.model}, "
+        f"max_tokens={body.max_tokens}, priority={body.priority}"
+    )
 
     prompt = _build_prompt(body.messages)
 
@@ -115,27 +142,111 @@ async def chat_completions(body: ChatCompletionRequest):
             headers={
                 "Cache-Control": "no-cache",
                 "X-Request-ID": req.request_id,
-            }
+            },
         )
-    else:
-        # Non-streaming: wait for all tokens then return full response
-        tokens = []
-        while True:
-            token = await req.output_queue.get()
-            if token is STREAM_DONE:
-                break
-            tokens.append(token)
 
-        return {
-            "id": req.request_id,
-            "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": "".join(tokens)
+    tokens = []
+    while True:
+        token = await req.output_queue.get()
+        if token is STREAM_DONE:
+            break
+        tokens.append(token)
+
+    return {
+        "id": f"chatcmpl-{req.request_id}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": loaded_model,
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "".join(tokens),
+            },
+            "logprobs": None,
+            "finish_reason": "stop",
+        }],
+        "usage": {
+            "prompt_tokens": len(req.prompt_tokens),
+            "completion_tokens": len(req.generated_tokens),
+            "total_tokens": len(req.prompt_tokens) + len(req.generated_tokens),
+        },
+    }
+
+
+@app.post("/v1/completions")
+async def completions(body: CompletionRequest):
+    scheduler: Scheduler = app.state.scheduler
+
+    loaded_model = _loaded_model(scheduler)
+    _validate_model(body.model, loaded_model)
+
+    log.info("MODEL========> ", loaded_model)
+
+    if body.stream:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "message": "Streaming is not implemented for /v1/completions. Use /v1/chat/completions or set stream=false.",
+                    "type": "invalid_request_error",
+                    "param": "stream",
+                    "code": "unsupported_streaming",
+                }
+            },
+        )
+
+    if isinstance(body.prompt, list):
+        if len(body.prompt) != 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "message": "Only one prompt is supported per request.",
+                        "type": "invalid_request_error",
+                        "param": "prompt",
+                        "code": "unsupported_prompt_batch",
+                    }
                 },
-                "finish_reason": "stop"
-            }]
-        }
+            )
+        prompt = body.prompt[0]
+    else:
+        prompt = body.prompt
+
+    req = Request(
+        request_id=str(uuid.uuid4()),
+        prompt=prompt,
+        max_tokens=body.max_tokens,
+        priority=_priority_from_str(body.priority),
+        arrival_time=time.monotonic(),
+    )
+
+    await scheduler.submit(req)
+
+    tokens = []
+    while True:
+        token = await req.output_queue.get()
+        if token is STREAM_DONE:
+            break
+        tokens.append(token)
+
+    return {
+        "id": f"cmpl-{req.request_id}",
+        "object": "text_completion",
+        "created": int(time.time()),
+        "model": loaded_model,
+        "choices": [{
+            "text": "".join(tokens),
+            "index": 0,
+            "logprobs": None,
+            "finish_reason": "stop",
+        }],
+        "usage": {
+            "prompt_tokens": len(req.prompt_tokens),
+            "completion_tokens": len(req.generated_tokens),
+            "total_tokens": len(req.prompt_tokens) + len(req.generated_tokens),
+        },
+    }
 
 
 @app.post("/v1/cancel/{request_id}")
