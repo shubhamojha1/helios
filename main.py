@@ -3,8 +3,10 @@ import uvicorn
 from api.server import app
 from engine.engine import Engine, EngineConfig
 from memory.manager import MemoryManager
+from core.logger import get_logger
 from scheduler.scheduler import Scheduler
 
+logger = get_logger(__name__)
 
 async def main():
     # Initialize components
@@ -24,6 +26,7 @@ async def main():
 
     # Run scheduler and uvicorn server concurrently
     config = uvicorn.Config(app, host="127.0.0.1", port=8080, log_level="warning")
+    logger.info(f"Host: {config.host} | PORT: {config.port}")
     server = uvicorn.Server(config)
 
     await asyncio.gather(
