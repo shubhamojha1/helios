@@ -83,7 +83,18 @@ async def _stream_tokens(
 @app.post("/v1/chat/completions")
 async def chat_completions(body: ChatCompletionRequest):
     scheduler: Scheduler = app.state.scheduler
-    logger.info(f"Incoming chat completion request: max_tokens={body.max_tokens}, priority={body.priority}")
+
+    loaded_model = Path(scheduler.engine.config.model_path).name
+    if body.model not in ("helios", loaded_model):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model '{body.model} is not loaded. Current model: {loaded_model}'"
+        )
+    logger.info(                                                                                                                                                
+          f"Incoming chat completion request: model={body.model}, "                                                                                               
+          f"max_tokens={body.max_tokens}, priority={body.priority}"                                                                                               
+      ) 
+    # logger.info(f"Incoming chat completion request: max_tokens={body.max_tokens}, priority={body.priority}")
 
     prompt = _build_prompt(body.messages)
 
