@@ -1,2 +1,18 @@
+[project]
+name = "helios"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[project.scripts]
+helios = "helios_cli:main"
+
+[tool.setuptools]
+py-modules = ["helios_cli", "main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*", "core*", "engine*", "memory*", "scheduler*"]
+namespaces = true
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
