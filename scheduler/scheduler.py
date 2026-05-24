@@ -19,11 +19,10 @@ class Scheduler:
         self,
         engine: Engine,
         memory_manager: MemoryManager,
-        max_batch_size: int = 8,
     ):
         self.engine = engine
         self.memory_manager = memory_manager
-        self.strategy = FCFSStrategy(max_batch_size=max_batch_size)
+        self.strategy = FCFSStrategy()
 
         # Waiting queue — requests submitted but not yet active
         self.waiting: List[Request] = []
@@ -117,7 +116,7 @@ class Scheduler:
 
         # Run prefill for newly admitted requests
         for req in output.prefill_requests:
-            first_token = self.engine.prefill(req)
+            first_token = await asyncio.to_thread(self.engine.prefill, req)
             req.generated_tokens.append(first_token)
 
             # Check immediately if first token is EOS
@@ -135,7 +134,7 @@ class Scheduler:
         ]
 
         if decoding:
-            token_map = self.engine.decode_step(decoding)
+            token_map = await asyncio.to_thread(self.engine.decode_step, decoding)
 
             for req in decoding:
                 if req.request_id not in token_map:
@@ -153,6 +152,7 @@ class Scheduler:
         self._step_id += 1
 
     async def _complete_request(self, req: Request) -> None:
+        self.engine.free(req.request_id)
         req.status = RequestStatus.COMPLETE
         req.completion_time = time.monotonic()
         self.memory_manager.free(req.request_id)

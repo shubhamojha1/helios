@@ -5,8 +5,8 @@ from memory.manager import MemoryManager
 
 
 class FCFSStrategy:
-    def __init__(self, max_batch_size: int = 8):
-        self.max_batch_size = max_batch_size
+    def __init__(self):
+        pass
 
     def schedule(
         self,
@@ -25,20 +25,13 @@ class FCFSStrategy:
             elif req.status == RequestStatus.DECODING:
                 decode_requests.append(req)
 
-        current_batch_size = len(prefill_requests) + len(decode_requests)
-
         # Admit waiting requests in arrival order (FCFS)
         # Sort by arrival time to be explicit
         waiting_sorted = sorted(waiting, key=lambda r: r.arrival_time)
 
         for req in waiting_sorted:
-            if current_batch_size >= self.max_batch_size:
-                break
-
-            # Check if memory can fit this request's prompt
+            # Admission gated solely on KV cache memory availability
             if not memory_manager.can_allocate(req.max_tokens):
-                # Skip — not enough pages. In FCFS we don't preempt,
-                # so we just wait until memory frees up.
                 continue
 
             # Admit the request
@@ -48,7 +41,6 @@ class FCFSStrategy:
             req.prefill_start_time = time.monotonic()
 
             prefill_requests.append(req)
-            current_batch_size += 1
 
         pages_used, pages_total = memory_manager.get_utilization()
 

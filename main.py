@@ -5,6 +5,7 @@ from engine.engine import Engine, EngineConfig
 from memory.manager import MemoryManager
 from core.logger import get_logger
 from scheduler.scheduler import Scheduler
+from engine.engine_torch import TorchEngine
 
 logger = get_logger(__name__)
 
@@ -15,19 +16,21 @@ async def serve(
     port: int = 8080,
     n_gpu_layers: int = -1,
     n_ctx: int = 2048,
-    max_batch_size: int = 4,
 ) -> None:
     # Initialize components
-    engine = Engine(EngineConfig(
-        model_path=model_path,
-        n_gpu_layers=n_gpu_layers,
-        n_ctx=n_ctx,
-        verbose=False,
+    # engine = Engine(EngineConfig(
+    #     model_path=model_path,
+    #     n_gpu_layers=n_gpu_layers,
+    #     n_ctx=n_ctx,
+    #     verbose=False,
+    # ))
+    engine = TorchEngine(EngineConfig(
+        model_path="models/qwen2.5-3b-instruct"
     ))
     engine.load_model()
 
     memory = MemoryManager(total_pages=256, page_size_tokens=16)
-    scheduler = Scheduler(engine=engine, memory_manager=memory, max_batch_size=max_batch_size)
+    scheduler = Scheduler(engine=engine, memory_manager=memory)
 
     # Inject scheduler into FastAPI app state
     app.state.scheduler = scheduler

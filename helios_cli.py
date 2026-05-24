@@ -18,8 +18,6 @@ def main() -> None:
     serve_parser.add_argument("--port", type=int, default=8080, help="Port to bind")
     serve_parser.add_argument("--n-ctx", type=int, default=2048, help="Model context size")
     serve_parser.add_argument("--n-gpu-layers", type=int, default=-1, help="GPU layers to offload")
-    serve_parser.add_argument("--max-batch-size", type=int, default=4, help="Scheduler batch size")
-
     args = parser.parse_args()
 
     if args.command == "serve":
@@ -30,7 +28,6 @@ def main() -> None:
                 port=args.port,
                 n_gpu_layers=args.n_gpu_layers,
                 n_ctx=args.n_ctx,
-                max_batch_size=args.max_batch_size,
             )
         )
 
